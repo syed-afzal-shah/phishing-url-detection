@@ -1,0 +1,11 @@
+{
+  "max_length": 300,
+  "max_tokens": 100,
+  "split": "character",
+  "standardize": null,
+  "label_mapping": {
+    "legitimate": 0,
+    "phishing": 1
+  },
+  "prediction_threshold": 0.5
+}

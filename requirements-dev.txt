@@ -1,0 +1,5 @@
+# Only needed to retrain / verify against the original Keras model (not for Vercel)
+tensorflow>=2.16
+pandas
+scikit-learn
+matplotlib

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phishing URL Detection with a Character-Level CNN</title>
+<meta name="description" content="Deep Learning semester project: detecting phishing URLs with a character-level convolutional neural network.">
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #ffffff; --text: #1b2433; --muted: #5b6678;
+    --border: #e1e5ee; --accent: #2563eb; --good: #15803d; --bad: #b91c1c;
+    --good-bg: #dcfce7; --bad-bg: #fee2e2; --code-bg: #eef1f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1420; --card: #171e2e; --text: #e8ecf5; --muted: #9aa6bd;
+      --border: #2a3350; --accent: #6ea0ff; --good: #4ade80; --bad: #f87171;
+      --good-bg: #12351f; --bad-bg: #3b1818; --code-bg: #1d2640;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--text); line-height: 1.6; }
+  header { padding: 48px 20px 24px; text-align: center; }
+  header h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 4vw, 2.4rem); }
+  header p { margin: 0 auto; max-width: 700px; color: var(--muted); }
+  main { max-width: 920px; margin: 0 auto; padding: 0 16px 56px; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+            padding: 22px; margin-top: 18px; }
+  h2 { margin: 0 0 12px; font-size: 1.25rem; }
+  h3 { margin: 16px 0 6px; font-size: 1rem; }
+  a { color: var(--accent); }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; font-size: .92em; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type=text] { flex: 1 1 280px; padding: 12px 14px; border-radius: 10px; font-size: 1rem;
+                     border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  button { padding: 12px 20px; border: 0; border-radius: 10px; font-size: 1rem; cursor: pointer;
+           background: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .6; cursor: wait; }
+  .chip { background: var(--code-bg); color: var(--text); font-weight: 400; font-size: .85rem;
+          padding: 6px 10px; border: 1px solid var(--border); }
+  .examples { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+              color: var(--muted); font-size: .9rem; }
+  #result { margin-top: 16px; display: none; border-radius: 12px; padding: 16px; }
+  #result.legit { display: block; background: var(--good-bg); border: 1px solid var(--good); }
+  #result.phish { display: block; background: var(--bad-bg); border: 1px solid var(--bad); }
+  #result.error { display: block; background: var(--code-bg); border: 1px solid var(--border); }
+  #verdict { font-size: 1.3rem; font-weight: 700; margin: 0 0 6px; }
+  .legit #verdict { color: var(--good); } .phish #verdict { color: var(--bad); }
+  .bar { height: 12px; background: var(--border); border-radius: 8px; overflow: hidden; margin: 8px 0; }
+  .bar > div { height: 100%; background: var(--bad); width: 0; transition: width .3s; }
+  #target { word-break: break-all; color: var(--muted); font-size: .9rem; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .metric { background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+            padding: 12px; text-align: center; }
+  .metric b { display: block; font-size: 1.4rem; }
+  .metric span { color: var(--muted); font-size: .85rem; }
+  .imgs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 14px; }
+  .imgs img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  td, th { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { width: 34%; color: var(--muted); font-weight: 600; }
+  .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .links a { display: block; text-decoration: none; padding: 14px; border: 1px solid var(--border);
+             border-radius: 10px; background: var(--bg); font-weight: 600; }
+  .links a small { display: block; font-weight: 400; color: var(--muted); }
+  .note { color: var(--muted); font-size: .9rem; }
+  footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 0 16px 36px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Phishing URL Detection</h1>
+  <p>A character-level convolutional neural network that classifies a URL as
+     <b>phishing</b> or <b>legitimate</b>. Deep Learning semester project.</p>
+</header>
+
+<main>
+  <section id="demo">
+    <h2>Live demo</h2>
+    <form id="form" class="row" autocomplete="off">
+      <input type="text" id="url" placeholder="Paste a URL, e.g. https://www.wikipedia.org" aria-label="URL to check" required>
+      <button id="go" type="submit">Check URL</button>
+    </form>
+    <div class="examples">
+      Try:
+      <button type="button" class="chip" data-url="https://www.wikipedia.org">Wikipedia</button>
+      <button type="button" class="chip" data-url="https://github.com/tensorflow/tensorflow">GitHub</button>
+      <button type="button" class="chip" data-url="http://paypal-secure-login.verify-account.example.ru/webscr.php?cmd=_login">Fake PayPal login</button>
+      <button type="button" class="chip" data-url="http://192.168.10.5/bank/login.php?id=8827364">IP-address bank login</button>
+    </div>
+    <div id="result" role="status" aria-live="polite">
+      <p id="verdict"></p>
+      <div class="bar" title="Phishing probability"><div id="fill"></div></div>
+      <div id="detail"></div>
+      <div id="target"></div>
+    </div>
+    <p class="note">The model only looks at the characters of the URL. It never visits the website, so treat the
+       result as a screening signal, not a guarantee. API: <code>POST /api/predict</code> with
+       <code>{"url": "..."}</code> or <code>GET /api/predict?url=...</code>.</p>
+  </section>
+
+  <section id="results">
+    <h2>Results (held-out test set, 33,973 URLs)</h2>
+    <div class="metrics">
+      <div class="metric"><b>96.94%</b><span>Accuracy</span></div>
+      <div class="metric"><b>97.24%</b><span>Precision</span></div>
+      <div class="metric"><b>96.62%</b><span>Recall</span></div>
+      <div class="metric"><b>96.93%</b><span>F1-score</span></div>
+      <div class="metric"><b>0.9965</b><span>ROC-AUC</span></div>
+    </div>
+    <div class="imgs">
+      <img src="training_curves.png" alt="Training and validation accuracy and loss per epoch">
+      <img src="confusion_matrix.png" alt="Confusion matrix on the test set">
+    </div>
+  </section>
+
+  <section id="details">
+    <h2>Dataset &amp; code details</h2>
+    <table>
+      <tr><th>Problem</th><td>Binary classification of URLs: legitimate (0) vs phishing (1)</td></tr>
+      <tr><th>Dataset</th><td>Balanced phishing/legitimate URL dataset from Zenodo (<code>balanced_urls.csv</code>, 340,000 rows,
+          <a href="https://zenodo.org/records/19371661" target="_blank" rel="noopener">source record</a>).
+          339,723 rows remain after removing 277 duplicate URLs.</td></tr>
+      <tr><th>Split</th><td>Stratified 80/10/10: 271,777 train, 33,973 validation, 33,973 test (no URL overlap between splits)</td></tr>
+      <tr><th>Preprocessing</th><td>Character-level vectorization, vocabulary of 97 symbols learned from the training split only, sequences padded or truncated to 300 characters</td></tr>
+      <tr><th>Model</th><td>Embedding (32) &rarr; Conv1D (64 filters, kernel 5) &rarr; Global max pooling &rarr; Dense (64) &rarr; Dropout (0.3) &rarr; Sigmoid. 17,633 parameters.</td></tr>
+      <tr><th>Training</th><td>Adam (lr 0.001), binary cross-entropy, batch size 256, early stopping on validation loss (stopped after 6 epochs, best weights restored)</td></tr>
+      <tr><th>Deployment</th><td>Weights exported to NumPy arrays; inference runs on a Vercel Python function without TensorFlow (verified against the Keras model: max probability difference 1.6e-06)</td></tr>
+    </table>
+    <h3>Known limitations</h3>
+    <p class="note">The dataset's phishing and legitimate URLs may differ in style (for example scheme or length), so the model can
+       learn dataset-specific patterns. Newer attack styles, URL shorteners and unusual legitimate URLs may be misclassified.
+       Use it as one signal among others.</p>
+  </section>
+
+  <section id="resources">
+    <h2>Project resources</h2>
+    <div class="links">
+      <a href="https://github.com/YOUR_GITHUB_USERNAME/phishing-url-detection" target="_blank" rel="noopener">GitHub Repository<small>Source code, model weights, tests</small></a>
+      <a href="YOUR_PROJECT_REPORT_LINK" target="_blank" rel="noopener">Project Report<small>Problem, dataset, architecture, results</small></a>
+      <a href="YOUR_PRESENTATION_LINK" target="_blank" rel="noopener">Presentation (PPT)<small>Slides for the project</small></a>
+      <a href="YOUR_YOUTUBE_VIDEO_LINK" target="_blank" rel="noopener">YouTube Video<small>Slides explained with voiceover</small></a>
+    </div>
+  </section>
+</main>
+
+<footer>Deep Learning Semester Project &middot; Phishing URL Detection</footer>
+
+<script>
+(function () {
+  var form = document.getElementById("form");
+  var input = document.getElementById("url");
+  var button = document.getElementById("go");
+  var box = document.getElementById("result");
+  var verdict = document.getElementById("verdict");
+  var detail = document.getElementById("detail");
+  var target = document.getElementById("target");
+  var fill = document.getElementById("fill");
+
+  function show(cls, title, text, url, pct) {
+    box.className = cls;
+    verdict.textContent = title;
+    detail.textContent = text;
+    target.textContent = url || "";
+    fill.style.width = (pct || 0) + "%";
+  }
+
+  document.querySelectorAll(".chip").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      input.value = chip.getAttribute("data-url");
+      form.requestSubmit();
+    });
+  });
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var url = input.value.trim();
+    if (!url) { return; }
+    button.disabled = true;
+    button.textContent = "Checking...";
+
+    fetch("/api/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: url })
+    })
+      .then(function (res) {
+        return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+      })
+      .then(function (out) {
+        if (!out.ok) {
+          show("error", "Could not check this URL", out.data.error || "Unknown error", url, 0);
+          return;
+        }
+        var d = out.data;
+        var pct = Math.round(d.phishing_probability * 1000) / 10;
+        var legit = d.prediction === "legitimate";
+        show(legit ? "legit" : "phish",
+             legit ? "Looks legitimate" : "Likely phishing",
+             "Phishing probability: " + pct + "%  |  Legitimate probability: " +
+             (Math.round(d.legitimate_probability * 1000) / 10) + "%",
+             d.url, pct);
+      })
+      .catch(function () {
+        show("error", "Network error", "The prediction service could not be reached. Please try again.", url, 0);
+      })
+      .finally(function () {
+        button.disabled = false;
+        button.textContent = "Check URL";
+      });
+  });
+})();
+</script>
+</body>
+</html>
